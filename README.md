@@ -3,7 +3,21 @@ Multiplayer Online TPS Battle - UE4 Game Development
 
 **Progress**
 
-version1.1--2022.10.13
+version1.0--2022.10.13
+
+version1.1--2022.10.16
+
+修复了人物被淘汰（血量为0）时可移动的bug。
+
+新增了人物被淘汰的消失溶解动画播放、人物头顶回收机器人的实例生成及回收音效；
+
+新增了人物死亡数的UI、武器现有子弹数和人物携带子弹数的UI；
+
+新增了人物装弹功能及对应动画、音效的功能，还有之前拾取武器的音效；
+
+新增了开火消耗子弹，装弹使携带弹药量减少、武器现有弹药增加的逻辑；
+
+新增了游戏时长UI。
 
 ## 开场白
 
@@ -47,25 +61,35 @@ BlasterCharacter是实现人物基础功能的文件
 
 ##### 人物转身及俯仰Turn()、LookUp()
 
+##### 客户端复制人物移动OnRep_ReplicatedMovement()
+
 ##### 模拟代理转身SimProxiesTurn()、人物转身TurnInPlace()
 
 通过计算俯仰角函数CalculateAO_Pitch()更新人物状态
 
-##### 输入绑定案件SetupPlayerInputComponent()
+##### 输入绑定按键SetupPlayerInputComponent()
 
 一些游戏输入按键的绑定。
 
+##### 人物与武器重合SetOverlappingWeapon()、复制到客户端OnRep_OverlappingWeapon()
+
+重合时显示可拾取UI
+
 ##### 腰射开火按键按下与松开FireButtonPressed()、FireButtonReleased()
 
-##### PlayFireMontage()、PlayElimMontage()、PlayHitReactMontage()
+##### PlayFireMontage()、PlayElimMontage()、PlayHitReactMontage()、PlayReloadMontage()
 
-播放开火蒙太奇动画、播放人物消失蒙太奇动画、播放人物受伤蒙太奇动画
+播放开火蒙太奇动画、播放人物消失蒙太奇动画、播放人物受伤蒙太奇动画、播放人物装弹蒙太奇动画
 
 ##### 机瞄按键按下与松开AimButtonPressed()、AimButtonReleased()
 
 ##### 蹲下按键按下CrouchButtonPressed()与装备武器按键按下EquipButtonPressed()
 
+##### 装弹按键按下ReloadButtonPressed()
+
 ##### 计算人物速度CalculateSpeed()
+
+##### 更新人物血量UpdateHUDHealth()、复制到客户端OnRep_Health()
 
 ##### 人物受伤ReceiveDamage()
 
@@ -77,11 +101,23 @@ BlasterCharacter是实现人物基础功能的文件
 
 ##### 人物消失广播MulticastElim()
 
-播放人物消失蒙太奇动画。
+播放人物消失蒙太奇动画，在此基础上应用了人物溶解特效，召唤回收机器人及音效。禁用人物移动和碰撞等。
+
+##### 更新溶解材质UpdateDissolveMaterial()
+
+##### 人物开始溶解StartDissolve()
+
+附加在消失动画的溶解材质按照编写的曲线（速率，亮度等）进行溶解
 
 ##### 人物消失计时器结束ElimTimerFinished()
 
 人物死亡消失后经过一段时间，调用RequestRespawn()使得人物重生。
+
+##### 轮询任何相关人员和初始化HUDPollInit()
+
+更新人物的击杀数和死亡数
+
+##### 其他一些设置人物状态的bool函数
 
 #### BlasterAnimInstance
 
@@ -93,6 +129,8 @@ BlasterCharacter是实现人物基础功能的文件
 
 以及由于人物骨骼与武器不适配，即人物骨骼并没有在应有的武器位置上而实现的左手IK功能。
 
+修复装弹过程中左手IK不适配的问题，同时右手位置不对的bug也有调整
+
 ### Weapon
 
 #### Weapon基类：实现枪械最基本的功能。
@@ -103,13 +141,33 @@ BlasterCharacter是实现人物基础功能的文件
 
 ##### 人物与武器可拾取的圆形检测区域重叠与不重叠事件OnSphereOverlap()、OnSphereEndOverlap()
 
-重叠时Pick-Up用户控件可见，不重叠时不可见。
+重叠时Pick-Up用户控件可见：调用ShowPickupWidget()，不重叠时不可见。
 
 ##### 设置武器状态SetWeaponState()
 
 设置武器状态为未捡、已捡，已捡则不再显示Pick-Up用户控件。
 
 ##### 展示可捡控件ShowPickupWidget()
+
+##### 设置武器子弹UISetHUDAmmo() 、客户端复制OnRep_Ammo()
+
+##### 设置武器状态SetWeaponState()、客户端复制OnRep_WeaponState()
+
+已装备EWS_Equipped、被丢弃EWS_Dropped的状态碰撞、重力设置等
+
+##### 武器被丢弃Dropped()
+
+##### 武器主人函数重写OnRep_Owner()
+
+##### 子弹减少SpendRound()
+
+弹药数大于等于0
+
+##### 添加子弹AddAmmo()
+
+装弹后，子弹数增加
+
+##### 武器目前弹容量是否为空IsEmpty()
 
 ##### 开火事件Fire()
 
@@ -175,6 +233,10 @@ BlasterCharacter是实现人物基础功能的文件
 
 设置十字准星大小。
 
+#### CharacterOverlay.h
+
+实现UI文本与程序绑定
+
 ### BlasterComponents
 
 #### CombatComponent
@@ -203,7 +265,19 @@ BlasterCharacter是实现人物基础功能的文件
 
 ##### EquipWeapon()
 
-武器装备，将武器静态网格体绑定在人物手骨骼上。
+武器装备，将武器静态网格体绑定在人物手骨骼上。更新武器主人、更新子弹数UI、更新武器类型、播放音效、检查是否为空等
+
+##### 在服务器上实现装弹ServerReload()、客户端响应装弹Reload()
+
+##### 完成装弹FinishReloading()
+
+动画播放完成才可再次装弹、期间不可开火
+
+##### 更新子弹数UpdateAmmoValues()
+
+##### 计算需要装弹的数量AmountToReload()
+
+有备用弹则装满，没有就不可装
 
 ##### 瞄准到敌人TraceUnderCrossairs()
 
@@ -220,6 +294,16 @@ BlasterCharacter是实现人物基础功能的文件
 ##### SetAiming()
 
 机瞄状态下人物速度改变。
+
+##### 是否可以开火CanFire()
+
+没有武器、没有子弹、装弹中都不可开火
+
+##### 初始化携带子弹数InitializeCarriedAmmo()
+
+##### 客户端复制战斗状态OnRep_CombatState()
+
+ECS_Reloading执行装弹逻辑，ECS_Unoccupied
 
 ### GameMode
 
@@ -240,6 +324,22 @@ BlasterCharacter是实现人物基础功能的文件
 ##### 玩家重生RequestRespawn()
 
 玩家死亡后等待消失计时器结束重新复活，复活位置随机
+
+### PlayerController
+
+#### BlasterPlayerController
+
+主要实现一些UI文本与逻辑的绑定，和游戏时间设置
+
+##### Tick()
+
+每一帧都要更新游戏时间并确保客户端与服务器的时间同步
+
+##### 确保客户端与服务器的时间同步CheckTimeSync()
+
+##### SetHUDHealth()、SetHUDScore()、SetHUDDefeats()、SetHUDWeaponAmmo()、SetHUDCarriedAmmo()、SetHUDMacthCountDown()
+
+设置设置设置设置....wnkfkwjflwefj（神志不清）
 
 ## 最后
 
