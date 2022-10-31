@@ -12,10 +12,22 @@ enum class EWeaponState : uint8
 {
 	EWS_Initial UMETA(DisplayeName = "Initial State"),
 	EWS_Equipped UMETA(DisplayeName = "Equipped"),
+	EWS_EquippedSecondary UMETA(DisplayeName = "Equipped Secondary"),
 	EWS_Dropped UMETA(DisplayeName = "Dropped"),
 
 	EWS_MAX UMETA(DisplayeName = "DefaultMAX")
 };
+
+UENUM(BlueprintType)
+enum class EFireType : uint8 
+{
+	EFT_HitScan UMETA(DisplayeName = "Hit Scan Weapon"),
+	EFT_Projectile UMETA(DisplayeName = "Projectile Weapon"),
+	EFT_Shotgun UMETA(DisplayeName = "Shotgun Weapon"),
+
+	EWS_MAX UMETA(DisplayeName = "DefaultMAX")
+};
+
 
 UCLASS()
 class BLASTER_API AWeapon : public AActor
@@ -42,6 +54,8 @@ public:
 	void Dropped();
 
 	void AddAmmo(int32 AmmoToAdd);
+	//散射结束
+	FVector TraceEndWithScatter(const FVector& HitTarget);
 
 	//Textures for the weapon crosshairs
 	UPROPERTY(EditAnywhere, Category = Crosshairs)
@@ -82,27 +96,60 @@ public:
 	//启用自定义深度
 	void EnableCustomDepth(bool bEnable);
 
+	//销毁默认武器
+	bool bDestroyWeapon = false;
+
+	UPROPERTY(EditAnywhere)
+	EFireType FireType;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
+	bool bUseScatter = false;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	UFUNCTION()
-		virtual void OnSphereOverlap(
-			UPrimitiveComponent* OverlappedComponent,
-			AActor* OtherActor,
-			UPrimitiveComponent* OtherComp,
-			int32 OtherBodyIndex,
-			bool bFromSweep,
-			const FHitResult& SweepResult
-		);
+	virtual void OnWeaponStateSet();
+	virtual void OnEquipped();
+	virtual void OnDropped();
+	virtual void OnEquippedSecondary();
 
 	UFUNCTION()
-		void OnSphereEndOverlap(
-			UPrimitiveComponent* OverlappedComponent,
-			AActor* OtherActor,
-			UPrimitiveComponent* OtherComp,
-			int32 OtherBodyIndex
-		);
+	virtual void OnSphereOverlap(
+		UPrimitiveComponent* OverlappedComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex,
+		bool bFromSweep,
+		const FHitResult& SweepResult
+	);
+
+	UFUNCTION()
+	void OnSphereEndOverlap(
+		UPrimitiveComponent* OverlappedComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex
+	);
+
+	//霰弹枪散射距离
+	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
+	float DistanceToSphere = 800.f;
+	//霰弹枪散射半径
+	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
+	float SphereRadius = 75.f;
+
+	UPROPERTY(EditAnywhere)
+	float Damage = 20.f;
+	
+	UPROPERTY(EditAnywhere)
+	bool bUseServerSideRewind = false;
+
+	UPROPERTY()
+	class ABlasterCharacter* BlasterOwnerCharacter;
+
+	UPROPERTY()
+	class ABlasterPlayerController* BlasterOwnerController;
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
@@ -126,26 +173,26 @@ private:
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<class ACasing> CasingClass;
 
-	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Ammo)
+	UPROPERTY(EditAnywhere)
 	int32 Ammo;
 
-	UFUNCTION()
-	void OnRep_Ammo();
+	//客户端预测
+	UFUNCTION(Client, Reliable)
+	void ClientUpdateAmmo(int32 ServerAmmo);
+
+	UFUNCTION(Client, Reliable)
+	void ClientAddAmmo(int32 AmmoToAdd);
 
 	void SpendRound();
+
+	//未处理服务器对弹药的请求数
+	int32 Sequence = 0;
 
 	UPROPERTY(EditAnywhere)
 	int32 MagCapacity;
 
-	UPROPERTY()
-	class ABlasterCharacter* BlasterOwnerCharacter;
-
-	UPROPERTY()
-	class ABlasterPlayerController* BlasterOwnerController;
-
 	UPROPERTY(EditAnywhere)
 	EWeaponType WeaponType;
-
 
 public:
 	void SetWeaponState(EWeaponState State);
@@ -158,5 +205,5 @@ public:
 	FORCEINLINE EWeaponType GetWeaponType() const { return WeaponType; }
 	FORCEINLINE int32 GetAmmo() const { return Ammo; }
 	FORCEINLINE int32 GetMagCapacity() const { return MagCapacity; }
-
+	FORCEINLINE float GetDamage() const { return Damage; }
 };
