@@ -18,7 +18,10 @@ public:
 	virtual void Fire(const FVector& HitTarget) override;
 
 private:
+	//复制弹药：服务器客户端均生成
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<class AProjectile> ProjectileClass;
-	
+	//只有服务器生成的弹药
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<AProjectile> ServerSideRewindProjectileClass;
 };

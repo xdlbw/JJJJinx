@@ -8,6 +8,8 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Sound/SoundCue.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Blaster/PlayerController/BlasterPlayerController.h"
+#include "Blaster/BlasterComponents/LagCompensationComponent.h"
 
 void AShotgun::FireShotgun(const TArray<FVector_NetQuantize>& HitTargets)
 {
@@ -24,6 +26,7 @@ void AShotgun::FireShotgun(const TArray<FVector_NetQuantize>& HitTargets)
 		const FVector Start = SocketTransform.GetLocation();
 
 		TMap<ABlasterCharacter*, uint32> HitMap;   //人物霰弹枪一次开火被击中多少次
+		TMap<ABlasterCharacter*, uint32> HeadShotHitMap;
 
 		for (FVector_NetQuantize HitTarget : HitTargets) {
 			FHitResult FireHit;
@@ -31,13 +34,25 @@ void AShotgun::FireShotgun(const TArray<FVector_NetQuantize>& HitTargets)
 
 			ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(FireHit.GetActor());
 			if (BlasterCharacter) {
-				if (HitMap.Contains(BlasterCharacter)) {
-					HitMap[BlasterCharacter]++;
+
+				const bool bHeadShot = FireHit.BoneName.ToString() == FString("head");
+				if (bHeadShot) {
+					if (HeadShotHitMap.Contains(BlasterCharacter)) {
+						HeadShotHitMap[BlasterCharacter]++;
+					}
+					else {
+						HeadShotHitMap.Emplace(BlasterCharacter, 1);
+					}
 				}
 				else {
-					HitMap.Emplace(BlasterCharacter, 1);
+					if (HitMap.Contains(BlasterCharacter)) {
+						HitMap[BlasterCharacter]++;
+					}
+					else {
+						HitMap.Emplace(BlasterCharacter, 1);
+					}
 				}
-
+				
 				if (ImpactParticles) {
 					UGameplayStatics::SpawnEmitterAtLocation(
 						GetWorld(),
@@ -57,14 +72,54 @@ void AShotgun::FireShotgun(const TArray<FVector_NetQuantize>& HitTargets)
 				}
 			}
 		}
+
+		TArray<ABlasterCharacter*> HitCharacters;
+		//maps character hit to total damage
+		TMap<ABlasterCharacter*, float> DamageMap;
+		//计算击中身体的伤害
 		for (auto HitPair : HitMap) {
-			if (HitPair.Key && InstigatorController && HasAuthority()) {
-				UGameplayStatics::ApplyDamage(   //应用伤害
-					HitPair.Key,
-					Damage * HitPair.Value,
-					InstigatorController,
-					this,
-					UDamageType::StaticClass()
+			if (HitPair.Key && InstigatorController) {
+				DamageMap.Emplace(HitPair.Key, HitPair.Value * Damage);
+				HitCharacters.AddUnique(HitPair.Key);
+			}
+		}
+		//计算爆头的伤害
+		for (auto HeadShotHitPair : HeadShotHitMap) {
+			if (HeadShotHitPair.Key) {
+				if (DamageMap.Contains(HeadShotHitPair.Key)) {
+					DamageMap[HeadShotHitPair.Key] += HeadShotHitPair.Value * HeadShotDamage;
+				}
+				else {
+					DamageMap.Emplace(HeadShotHitPair.Key, HeadShotHitPair.Value * HeadShotDamage );
+				}
+				HitCharacters.AddUnique(HeadShotHitPair.Key);
+			}
+		}
+
+		for (auto DamagePair : DamageMap) {
+			if (DamagePair.Key && InstigatorController) {
+				bool bCauseAuthDamage = !bUseServerSideRewind || OwnerPawn->IsLocallyControlled();
+				if (HasAuthority() && bCauseAuthDamage) {
+					UGameplayStatics::ApplyDamage(   //应用伤害
+						DamagePair.Key,
+						DamagePair.Value,
+						InstigatorController,
+						this,
+						UDamageType::StaticClass()
+					);
+				}
+			}
+		}
+
+		if (!HasAuthority() && bUseServerSideRewind) {
+			BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(OwnerPawn) : BlasterOwnerCharacter;
+			BlasterOwnerController = BlasterOwnerController == nullptr ? Cast<ABlasterPlayerController>(InstigatorController) : BlasterOwnerController;
+			if (BlasterOwnerController && BlasterOwnerCharacter && BlasterOwnerCharacter->GetLagCompensation() && BlasterOwnerCharacter->IsLocallyControlled()) {
+				BlasterOwnerCharacter->GetLagCompensation()->ShotgunServerScoreRequest(
+					HitCharacters,
+					Start,
+					HitTargets,
+					BlasterOwnerController->GetServerTime() - BlasterOwnerController->SingleTripTime
 				);
 			}
 		}

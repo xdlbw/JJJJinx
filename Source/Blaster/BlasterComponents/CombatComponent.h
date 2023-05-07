@@ -34,6 +34,12 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void FinishReloading();
 
+	UFUNCTION(BlueprintCallable)
+	void FinishSwap();
+
+	UFUNCTION(BlueprintCallable)
+	void FinishSwapAttachWeapon();
+
 	void FireButtonPressed(bool bPressed);
 
 	UFUNCTION(BlueprintCallable)
@@ -76,14 +82,14 @@ protected:
 	void LocalFire(const FVector_NetQuantize& TraceHitTarget); 
 	void ShotgunLocalFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
 
-	UFUNCTION(Server, Reliable)
-	void ServerFire(const FVector_NetQuantize& TraceHitTarget);
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerFire(const FVector_NetQuantize& TraceHitTarget, float FireDelay);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastFire(const FVector_NetQuantize& TraceHitTarget);
 
-	UFUNCTION(Server, Reliable)
-	void ServerShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets, float FireDelay);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
@@ -112,6 +118,8 @@ protected:
 	void AttachActorToRightHand(AActor* ActorToAttach);
 	//把武器加到左手上
 	void AttachActorToLeftHand(AActor* ActorToAttach);
+	//旗帜附着左手
+	void AttachFlagToLeftHand(AWeapon* Flag);
 	//把武器加到背包上（副武器）
 	void AttachActorToBackpack(AActor* ActorToAttach);
 	//更新携带弹药
@@ -245,6 +253,12 @@ private:
 	int32 MaxGrenades = 4;
 
 	void UpdateHUDGrenades();
+
+	UPROPERTY(ReplicatedUsing = OnRep_HoldingTheFlag)
+	bool bHoldingTheFlag = false;
+
+	UFUNCTION()
+	void OnRep_HoldingTheFlag();
 
 public:
 	FORCEINLINE int32 GetGrenades() const { return Grenades; }

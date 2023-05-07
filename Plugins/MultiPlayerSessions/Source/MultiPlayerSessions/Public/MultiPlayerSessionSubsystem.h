@@ -38,6 +38,8 @@ public:
 	FMultiPlayerOnDestroySessionComplete MultiPlayerOnDestroySessionComplete;
 	FMultiPlayerOnStartSessionComplete MultiPlayerOnStartSessionComplete;
 
+	int32 DesiredNumPublicConnections{};
+	FString DesiredMatchType{};
 protected:
 	//µ÷ÓÃÎ¯ÍÐ
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
